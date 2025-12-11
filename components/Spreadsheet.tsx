@@ -482,12 +482,21 @@ const Spreadsheet: React.FC<SpreadsheetProps> = ({
     onChange(nextState);
   };
 
-  const addRow = () => {
-    const newRow: RowData = {};
-    data.columns.forEach(col => newRow[col] = '');
+  const addRows = (count: number) => {
+    const safeCount = Math.max(1, Math.min(10000, Math.floor(count || 0)));
+    const template: RowData = {};
+    data.columns.forEach((col) => {
+      template[col] = '';
+    });
+
+    const newRows: RowData[] = [];
+    for (let i = 0; i < safeCount; i++) {
+      newRows.push({ ...template });
+    }
+
     onChange({
       ...data,
-      data: [...data.data, newRow]
+      data: [...data.data, ...newRows],
     });
   };
 
@@ -1222,12 +1231,12 @@ ${tbody}
 
   return (
     <div className="flex flex-col h-full bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden relative">
-      <input 
-        type="file" 
-        ref={fileInputRef} 
-        onChange={handleImport} 
-        accept=".csv,.tsv,.xlsx,.xls,.ods,.json,.jsonl,.ndjson,.html,.htm,.orc,.feather,.arrow,.db,.sqlite,.sqlite3,.sql,.parquet,.avro,.avro.json" 
-        className="hidden" 
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleImport}
+        accept=".csv,.tsv,.xlsx,.xls,.ods,.json,.jsonl,.ndjson,.html,.htm,.orc,.feather,.arrow,.db,.sqlite,.sqlite3,.sql,.parquet,.avro,.avro.json"
+        className="hidden"
       />
       <SpreadsheetToolbar
         canUndo={canUndo}
@@ -1299,7 +1308,7 @@ ${tbody}
         setSelectedCell={setSelectedCell}
         editingCell={editingCell}
         setEditingCell={setEditingCell}
-        addRow={addRow}
+        addRows={addRows}
         addColumn={addColumn}
         handleCellChange={handleCellChange}
         isAnomalyCell={isAnomalyCell}
@@ -1313,6 +1322,5 @@ ${tbody}
       )}
     </div>
   );
-};
 
 export default Spreadsheet;

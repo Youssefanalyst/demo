@@ -1,4 +1,4 @@
-import React, { RefObject } from 'react';
+import React, { RefObject, useState } from 'react';
 import { SpreadsheetState, ColumnType } from '../types';
 import { Plus, Type, Hash, Calendar } from 'lucide-react';
 import ColumnHeader from './spreadsheet/ColumnHeader';
@@ -29,7 +29,7 @@ interface SpreadsheetGridProps {
   setSelectedCell: (cell: CellCoord | null) => void;
   editingCell: CellCoord | null;
   setEditingCell: (cell: CellCoord | null) => void;
-  addRow: () => void;
+  addRows: (count: number) => void;
   addColumn: () => void;
   handleCellChange: (rowIndex: number, column: string, value: string) => void;
   isAnomalyCell: (rowIndex: number, column: string) => boolean;
@@ -54,11 +54,23 @@ const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
   setSelectedCell,
   editingCell,
   setEditingCell,
-  addRow,
+  addRows,
   addColumn,
   handleCellChange,
   isAnomalyCell,
 }) => {
+  const [rowsToAdd, setRowsToAdd] = useState<number>(1);
+
+  const handleRowsToAddChange = (value: string) => {
+    const parsed = parseInt(value, 10);
+    if (isNaN(parsed)) {
+      setRowsToAdd(1);
+      return;
+    }
+    const clamped = Math.max(1, Math.min(10000, parsed));
+    setRowsToAdd(clamped);
+  };
+
   return (
     <>
       <div className="flex-1 overflow-auto custom-scrollbar relative">
@@ -128,12 +140,23 @@ const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
         </table>
       </div>
       <div className="p-2 border-t border-gray-200 bg-gray-50 flex justify-between items-center">
-        <button
-          onClick={addRow}
-          className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-brand-700 bg-brand-50 hover:bg-brand-100 rounded-md transition-colors"
-        >
-          <Plus size={16} /> Add Row
-        </button>
+        <div className="flex items-center gap-2">
+          <input
+            type="number"
+            min={1}
+            max={10000}
+            value={rowsToAdd}
+            onChange={(e) => handleRowsToAddChange(e.target.value)}
+            className="w-20 px-2 py-1 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-brand-500"
+            title="Number of rows to add (1 - 10000)"
+          />
+          <button
+            onClick={() => addRows(rowsToAdd)}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-brand-700 bg-brand-50 hover:bg-brand-100 rounded-md transition-colors"
+          >
+            <Plus size={16} /> Add Rows
+          </button>
+        </div>
         <div className="flex gap-4 text-xs text-gray-400 px-2">
           <span className="flex items-center gap-1 text-blue-600">
             <div className="w-1.5 h-1.5 bg-blue-400 rounded-full"></div> Formula
