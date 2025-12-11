@@ -1,6 +1,6 @@
-import React, { Dispatch, SetStateAction, RefObject } from 'react';
+import React, { Dispatch, SetStateAction, RefObject, useState } from 'react';
 import { FormattingRule } from '../types';
-import { Undo, Redo, Search, ChevronDown, ChevronUp, X } from 'lucide-react';
+import { Undo, Redo, Search, ChevronDown, ChevronUp, X, Sigma } from 'lucide-react';
 import FileMenu from './spreadsheet/FileMenu';
 import FormattingModal from './spreadsheet/FormattingModal';
 import FormulaHelp from './spreadsheet/FormulaHelp';
@@ -50,6 +50,11 @@ interface SpreadsheetToolbarProps {
   currentMatchIndex: number;
   prevMatch: () => void;
   nextMatch: () => void;
+  onRunAnomalyDetection: (options: {
+    method: 'zscore' | 'iqr';
+    columns?: string[];
+    action?: 'highlight' | 'replace_mean' | 'replace_median' | 'replace_mode' | 'delete_rows';
+  }) => void;
 }
 
 const SpreadsheetToolbar: React.FC<SpreadsheetToolbarProps> = ({
@@ -93,7 +98,21 @@ const SpreadsheetToolbar: React.FC<SpreadsheetToolbarProps> = ({
   currentMatchIndex,
   prevMatch,
   nextMatch,
+  onRunAnomalyDetection,
 }) => {
+  const [isAnomalyPanelOpen, setIsAnomalyPanelOpen] = useState(false);
+  const [anomalyMethod, setAnomalyMethod] = useState<'zscore' | 'iqr'>('zscore');
+  const [anomalyScope, setAnomalyScope] = useState<'all' | 'selected'>('all');
+  const [anomalySelectedCols, setAnomalySelectedCols] = useState<string[]>([]);
+  const [anomalyAction, setAnomalyAction] = useState<
+    'highlight' | 'replace_mean' | 'replace_median' | 'replace_mode' | 'delete_rows'
+  >('highlight');
+
+  const toggleAnomalyColumn = (col: string) => {
+    setAnomalySelectedCols((prev) =>
+      prev.includes(col) ? prev.filter((c) => c !== col) : [...prev, col],
+    );
+  };
   return (
     <>
       {/* Toolbar */}
@@ -163,6 +182,162 @@ const SpreadsheetToolbar: React.FC<SpreadsheetToolbarProps> = ({
 
           {/* Formula Help Button */}
           <FormulaHelp isOpen={isHelpOpen} setIsOpen={setIsHelpOpen} />
+
+          <div className="h-6 w-px bg-gray-300 mx-1"></div>
+
+          {/* Anomaly Detection Button & Panel */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setIsAnomalyPanelOpen((open) => !open)}
+              className="flex items-center gap-1 px-2 py-1 text-xs rounded-md border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 shadow-sm"
+            >
+              <Sigma size={14} className="text-red-500" />
+              <span>Anomaly Detection</span>
+            </button>
+
+            {isAnomalyPanelOpen && (
+              <div className="absolute z-30 mt-1 w-72 bg-white border border-gray-200 rounded-md shadow-lg p-3 right-0">
+                <div className="text-xs font-semibold text-gray-700 mb-2">Detection Method</div>
+                <div className="flex gap-2 mb-3">
+                  <button
+                    type="button"
+                    onClick={() => setAnomalyMethod('zscore')}
+                    className={`flex-1 px-2 py-1 text-[11px] rounded border ${
+                      anomalyMethod === 'zscore'
+                        ? 'bg-blue-50 border-blue-400 text-blue-700'
+                        : 'bg-gray-50 border-gray-200 text-gray-600'
+                    }`}
+                  >
+                    Z-Score
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAnomalyMethod('iqr')}
+                    className={`flex-1 px-2 py-1 text-[11px] rounded border ${
+                      anomalyMethod === 'iqr'
+                        ? 'bg-blue-50 border-blue-400 text-blue-700'
+                        : 'bg-gray-50 border-gray-200 text-gray-600'
+                    }`}
+                  >
+                    IQR
+                  </button>
+                </div>
+
+                <div className="text-xs font-semibold text-gray-700 mb-1">Data Scope</div>
+                <div className="flex flex-col gap-1 mb-2 text-xs text-gray-700">
+                  <label className="flex items-center gap-1">
+                    <input
+                      type="radio"
+                      className="h-3 w-3"
+                      checked={anomalyScope === 'all'}
+                      onChange={() => setAnomalyScope('all')}
+                    />
+                    <span>All numeric columns</span>
+                  </label>
+                  <label className="flex items-center gap-1">
+                    <input
+                      type="radio"
+                      className="h-3 w-3"
+                      checked={anomalyScope === 'selected'}
+                      onChange={() => setAnomalyScope('selected')}
+                    />
+                    <span>Select specific columns</span>
+                  </label>
+                </div>
+
+                {anomalyScope === 'selected' && (
+                  <div className="max-h-32 overflow-auto border border-gray-100 rounded p-1 mb-2 text-xs">
+                    {dataColumns.map((col) => (
+                      <label key={col} className="flex items-center gap-1 py-0.5">
+                        <input
+                          type="checkbox"
+                          className="h-3 w-3"
+                          checked={anomalySelectedCols.includes(col)}
+                          onChange={() => toggleAnomalyColumn(col)}
+                        />
+                        <span className="truncate">{col}</span>
+                      </label>
+                    ))}
+                    {dataColumns.length === 0 && (
+                      <div className="text-gray-400 text-[11px]">No columns available</div>
+                    )}
+                  </div>
+                )}
+
+                <div className="text-xs font-semibold text-gray-700 mb-1">Anomaly Handling</div>
+                <div className="flex flex-col gap-1 mb-2 text-xs text-gray-700">
+                  <label className="flex items-center gap-1">
+                    <input
+                      type="radio"
+                      className="h-3 w-3"
+                      checked={anomalyAction === 'highlight'}
+                      onChange={() => setAnomalyAction('highlight')}
+                    />
+                    <span>Highlight only</span>
+                  </label>
+                  <label className="flex items-center gap-1">
+                    <input
+                      type="radio"
+                      className="h-3 w-3"
+                      checked={anomalyAction === 'replace_mean'}
+                      onChange={() => setAnomalyAction('replace_mean')}
+                    />
+                    <span>Replace with mean</span>
+                  </label>
+                  <label className="flex items-center gap-1">
+                    <input
+                      type="radio"
+                      className="h-3 w-3"
+                      checked={anomalyAction === 'replace_median'}
+                      onChange={() => setAnomalyAction('replace_median')}
+                    />
+                    <span>Replace with median</span>
+                  </label>
+                  <label className="flex items-center gap-1">
+                    <input
+                      type="radio"
+                      className="h-3 w-3"
+                      checked={anomalyAction === 'replace_mode'}
+                      onChange={() => setAnomalyAction('replace_mode')}
+                    />
+                    <span>Replace with mode</span>
+                  </label>
+                  <label className="flex items-center gap-1">
+                    <input
+                      type="radio"
+                      className="h-3 w-3"
+                      checked={anomalyAction === 'delete_rows'}
+                      onChange={() => setAnomalyAction('delete_rows')}
+                    />
+                    <span>Delete rows with anomalies</span>
+                  </label>
+                </div>
+
+                <div className="flex justify-end gap-2 mt-1">
+                  <button
+                    type="button"
+                    className="px-2 py-1 text-[11px] rounded border border-gray-200 text-gray-600 hover:bg-gray-50"
+                    onClick={() => setIsAnomalyPanelOpen(false)}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="px-3 py-1 text-[11px] rounded bg-red-600 text-white hover:bg-red-700 disabled:opacity-40"
+                    disabled={anomalyScope === 'selected' && anomalySelectedCols.length === 0}
+                    onClick={() => {
+                      const columns = anomalyScope === 'all' ? undefined : anomalySelectedCols;
+                      onRunAnomalyDetection({ method: anomalyMethod, columns, action: anomalyAction });
+                      setIsAnomalyPanelOpen(false);
+                    }}
+                  >
+                    Run
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Search Bar */}

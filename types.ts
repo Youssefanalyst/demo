@@ -52,14 +52,23 @@ export interface Message {
   timestamp: number;
 }
 
-export interface SheetEditOperation {
-  type: 'update_cell';
-  target: {
-    rowIndex: number;
-    columnKey: string;
-  };
-  value: string | number;
-}
+export type SheetEditOperation =
+  | {
+      type: 'update_cell';
+      target: {
+        rowIndex: number;
+        columnKey: string;
+      };
+      value: string | number;
+    }
+  | {
+      type: 'run_anomaly_detection';
+      options?: {
+        method?: 'zscore' | 'iqr';
+        columns?: string[];
+        action?: 'highlight' | 'replace_mean' | 'replace_median' | 'replace_mode' | 'delete_rows';
+      };
+    };
 
 export interface SheetAssistantResult {
   explanation: string;

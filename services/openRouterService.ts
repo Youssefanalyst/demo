@@ -1,4 +1,5 @@
 import { SpreadsheetState, DashboardData, SheetAssistantResult } from '../types';
+import { detectAnomalies } from '../lib/anomalyDetection';
 
 export interface AISettings {
   apiKey: string;
@@ -11,6 +12,62 @@ interface ChatMessage {
   role: ChatMessageRole;
   content: string;
 }
+
+interface WorkbookContext {
+  activeSheetName: string;
+  sheets: {
+    name: string;
+    columns: string[];
+    columnTypes: Record<string, any>;
+    rowCount: number;
+  }[];
+}
+
+const buildAnomalySummary = (spreadsheet: SpreadsheetState): string => {
+  try {
+    const { anomalies, usedColumns } = detectAnomalies(spreadsheet);
+    if (!anomalies || anomalies.length === 0) {
+      return 'No anomalies detected in numeric columns (z-score method, threshold 3).';
+    }
+
+    const byColumn: Record<
+      string,
+      {
+        count: number;
+        samples: { rowIndex: number; value: number }[];
+      }
+    > = {};
+
+    anomalies.forEach((a) => {
+      const bucket = byColumn[a.column] || { count: 0, samples: [] };
+      bucket.count += 1;
+      if (bucket.samples.length < 5) {
+        bucket.samples.push({ rowIndex: a.rowIndex, value: a.value });
+      }
+      byColumn[a.column] = bucket;
+    });
+
+    const lines: string[] = [];
+    lines.push(
+      `Total anomalies: ${anomalies.length} across ${usedColumns.length} numeric columns (z-score ≥ 3).`,
+    );
+
+    Object.entries(byColumn).forEach(([column, info]) => {
+      const sampleText = info.samples
+        .map((s) => `row ${s.rowIndex + 1} (value=${s.value})`)
+        .join(', ');
+      if (sampleText) {
+        lines.push(`- ${column}: ${info.count} anomalies, e.g. ${sampleText}`);
+      } else {
+        lines.push(`- ${column}: ${info.count} anomalies`);
+      }
+    });
+
+    return lines.join('\n');
+  } catch {
+    return '';
+  }
+};
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
@@ -156,13 +213,32 @@ export const askCopilotWithOpenRouter = async (
   history: { role: 'user' | 'model'; content: string }[],
   contextData: SpreadsheetState,
   settings: AISettings,
+  workbookContext?: WorkbookContext,
 ): Promise<string> => {
-  const context = `Current Dataset Context:
+  let context = `Current Dataset Context:
 Columns: ${JSON.stringify(contextData.columns)}
 Types: ${JSON.stringify(contextData.columnTypes)}
 Formulas: ${JSON.stringify(contextData.formulas)}
 Formatting Rules: ${JSON.stringify(contextData.formattingRules)}
 Data (first 10 rows): ${JSON.stringify(contextData.data.slice(0, 10))}`;
+
+  const anomalySummary = buildAnomalySummary(contextData);
+  if (anomalySummary) {
+    context += `\n\nAnomaly detection summary for the active sheet (computed with z-score method):\n${anomalySummary}`;
+  }
+
+  if (workbookContext && workbookContext.sheets.length > 0) {
+    const sheetsSummary = workbookContext.sheets
+      .map(
+        (sheet, index) =>
+          `Sheet ${index + 1} - ${sheet.name} (rows: ${sheet.rowCount})\n` +
+          `Columns: ${JSON.stringify(sheet.columns)}\n` +
+          `Types: ${JSON.stringify(sheet.columnTypes)}`,
+      )
+      .join('\n\n');
+
+    context += `\n\nWorkbook Overview:\n${sheetsSummary}\n\nActive sheet: ${workbookContext.activeSheetName}`;
+  }
 
   const systemPrompt = `You are Lumina, a helpful data assistant.
 You help users edit spreadsheets, understand formulas, and analyze data.
@@ -170,15 +246,20 @@ Keep answers concise and helpful.
 Use this dataset context when answering:
 ${context}`;
 
-  const lastUserMessage = history[history.length - 1];
-  if (!lastUserMessage || lastUserMessage.role !== 'user') {
+  const hasUserMessage = history.some((m) => m.role === 'user');
+  if (!hasUserMessage) {
     return 'Waiting for user input...';
   }
 
-  const raw = await callOpenRouter(settings, [
+  const messages: ChatMessage[] = [
     { role: 'system', content: systemPrompt },
-    { role: 'user', content: lastUserMessage.content },
-  ]);
+    ...history.map((m) => ({
+      role: (m.role === 'user' ? 'user' : 'assistant') as ChatMessageRole,
+      content: m.content,
+    })),
+  ];
+
+  const raw = await callOpenRouter(settings, messages);
 
   return raw;
 };
@@ -187,6 +268,7 @@ export const assistSpreadsheetWithOpenRouter = async (
   spreadsheet: SpreadsheetState,
   settings: AISettings,
   userInstruction: string,
+  workbookContext?: WorkbookContext,
 ): Promise<SheetAssistantResult> => {
   const columns = spreadsheet.columns;
   const sampleRows = spreadsheet.data.slice(0, 20);
@@ -199,14 +281,24 @@ You must respond with JSON only, no extra text or markdown.
 The JSON must match exactly this TypeScript shape:
 {
   "explanation": string;
-  "operations": {
-    "type": "update_cell";
-    "target": {
-      "rowIndex": number; // zero-based index into the data array
-      "columnKey": string; // must be exactly one of the provided column names
-    };
-    "value": string | number;
-  }[];
+  "operations": (
+    | {
+        "type": "update_cell";
+        "target": {
+          "rowIndex": number; // zero-based index into the data array
+          "columnKey": string; // must be exactly one of the provided column names
+        };
+        "value": string | number;
+      }
+    | {
+        "type": "run_anomaly_detection";
+        "options"?: {
+          "method"?: "zscore" | "iqr";
+          "columns"?: string[];
+          "action"?: "highlight" | "replace_mean" | "replace_median" | "replace_mode" | "delete_rows";
+        };
+      }
+  )[];
 }
 
 Notes:
@@ -218,11 +310,30 @@ Notes:
 - Never invent rows beyond the current data length. Valid rowIndex is between 0 and data.length - 1.
 - If the user asks for a calculation (e.g. "multiply A5 by 2"), compute the new value and return it as "value".
 - If the instruction is ambiguous, do the safest, smallest change that clearly matches it.
+- If the user asks you to highlight or select anomalous values without changing them, return a single 'run_anomaly_detection' operation with options.action = 'highlight' (or omit action, which defaults to highlight) instead of 'update_cell'.
+- If the user asks you to automatically fix or treat anomalous values (for example, replace them with the column mean/median/mode, or delete rows containing anomalies), prefer returning a single 'run_anomaly_detection' operation with options.action set to 'replace_mean', 'replace_median', 'replace_mode', or 'delete_rows' instead of issuing many 'update_cell' operations.
 - If you cannot determine any safe edit, return operations: [] and a brief explanation why.`;
+
+  const anomalySummary = buildAnomalySummary(spreadsheet);
+
+  let workbookSection = '';
+  if (workbookContext && workbookContext.sheets.length > 0) {
+    const sheetsSummary = workbookContext.sheets
+      .map(
+        (sheet, index) =>
+          `Sheet ${index + 1} - ${sheet.name} (rows: ${sheet.rowCount})\n` +
+          `Columns: ${JSON.stringify(sheet.columns)}`,
+      )
+      .join('\n\n');
+
+    workbookSection = `\n\nWorkbook context (all sheets):\n${sheetsSummary}\n\nActive sheet for edits: ${workbookContext.activeSheetName}`;
+  }
 
   const userPrompt = `Spreadsheet columns (in order): ${JSON.stringify(columns)}
 Column types: ${JSON.stringify(spreadsheet.columnTypes)}
-Current data sample (first rows): ${JSON.stringify(sampleRows)}
+Current data sample (first rows): ${JSON.stringify(sampleRows)}${
+    anomalySummary ? `\n\nAnomaly detection summary for this sheet (computed with z-score method):\n${anomalySummary}` : ''
+  }${workbookSection}
 
 User instruction:
 """${userInstruction}"""`;

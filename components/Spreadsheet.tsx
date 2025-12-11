@@ -5,11 +5,20 @@ import autoTable from 'jspdf-autotable';
 import { RowData, SpreadsheetState, ColumnType, FormattingRule, ConditionOperator } from '../types';
 import { Plus, Trash2, Type, Hash, Calendar, AlertCircle, Palette, X, Check, Undo, Redo, Download, Upload, HelpCircle, Search, ChevronUp, ChevronDown, Sigma, MoreVertical, Edit, FileSpreadsheet, FileText, FileJson, Database, FileCode } from 'lucide-react';
 import { evaluateFormula } from '../lib/formulas/engine';
-import { detectAnomalies, AnomalyPoint } from '../lib/anomalyDetection';
+import { detectAnomalies, AnomalyPoint, AnomalyMethod } from '../lib/anomalyDetection';
 import { importDataFromFile } from '../lib/importExport/parsers';
 import SpreadsheetToolbar from './SpreadsheetToolbar';
 import SpreadsheetGrid from './SpreadsheetGrid';
 import FormulaBar from './FormulaBar';
+
+interface ExternalAnomalyRequest {
+  id: number;
+  options?: {
+    method?: AnomalyMethod;
+    columns?: string[];
+    action?: 'highlight' | 'replace_mean' | 'replace_median' | 'replace_mode' | 'delete_rows';
+  };
+}
 
 interface SpreadsheetProps {
   data: SpreadsheetState;
@@ -18,6 +27,7 @@ interface SpreadsheetProps {
   onRedo: () => void;
   canUndo: boolean;
   canRedo: boolean;
+  externalAnomalyRequest?: ExternalAnomalyRequest;
 }
 
 // Helper to convert index to Excel-like column letter (0->A, 1->B, 26->AA)
@@ -37,6 +47,7 @@ const Spreadsheet: React.FC<SpreadsheetProps> = ({
   onRedo,
   canUndo,
   canRedo,
+  externalAnomalyRequest,
 }) => {
   const [editingCell, setEditingCell] = useState<{r: number, c: string} | null>(null);
   const [selectedCell, setSelectedCell] = useState<{r: number, c: string} | null>(null);
@@ -138,9 +149,18 @@ const Spreadsheet: React.FC<SpreadsheetProps> = ({
 
   // Recompute anomalies when data changes
   useEffect(() => {
-    const result = detectAnomalies(data);
-    setAnomalies(result.anomalies);
+    setAnomalies([]);
   }, [data]);
+
+  // Allow external triggers (e.g. from Copilot) to run anomaly detection
+  useEffect(() => {
+	 if (!externalAnomalyRequest) return;
+	 const { options } = externalAnomalyRequest;
+	 handleRunAnomalyDetection({
+		 method: options?.method ?? 'zscore',
+		 columns: options?.columns,
+	 });
+  }, [externalAnomalyRequest]);
 
   // Search Logic
   useEffect(() => {
@@ -272,6 +292,133 @@ const Spreadsheet: React.FC<SpreadsheetProps> = ({
   const isAnomalyCell = (rowIndex: number, column: string): boolean => {
     if (!anomalies || anomalies.length === 0) return false;
     return anomalies.some((a) => a.rowIndex === rowIndex && a.column === column);
+  };
+
+  const handleRunAnomalyDetection = (options: {
+    method: 'zscore' | 'iqr';
+    columns?: string[];
+    action?: 'highlight' | 'replace_mean' | 'replace_median' | 'replace_mode' | 'delete_rows';
+  }) => {
+    const result = detectAnomalies(data, {
+      method: options.method,
+      columns: options.columns,
+    });
+    setAnomalies(result.anomalies);
+
+    const action = options.action || 'highlight';
+    if (!result.anomalies.length || action === 'highlight') {
+      return;
+    }
+
+    if (action === 'delete_rows') {
+      const rowsToDelete = new Set(result.anomalies.map((a) => a.rowIndex));
+      if (rowsToDelete.size === 0) return;
+
+      const removedSorted = Array.from(rowsToDelete).sort((a, b) => a - b);
+
+      const newData: RowData[] = [];
+      data.data.forEach((row, idx) => {
+        if (!rowsToDelete.has(idx)) {
+          newData.push({ ...row });
+        }
+      });
+
+      const newFormulas: Record<string, string> = {};
+      (Object.entries(data.formulas) as [string, string][]).forEach(([key, val]) => {
+        const [rStr, c] = key.split('-');
+        const r = parseInt(rStr, 10);
+        if (rowsToDelete.has(r)) return;
+        const removedBefore = removedSorted.filter((idx) => idx < r).length;
+        const newIndex = r - removedBefore;
+        newFormulas[`${newIndex}-${c}`] = val;
+      });
+
+      const nextState: SpreadsheetState = {
+        ...data,
+        data: newData,
+        formulas: newFormulas,
+      };
+
+      onChange(nextState);
+
+      const post = detectAnomalies(nextState, {
+        method: options.method,
+        columns: options.columns,
+      });
+      setAnomalies(post.anomalies);
+      return;
+    }
+
+    // Replacement-based treatments: compute central tendency per column from non-anomalous values
+    const anomalyKeys = new Set<string>();
+    result.anomalies.forEach((a) => {
+      anomalyKeys.add(`${a.rowIndex}-${a.column}`);
+    });
+
+    const centralByColumn: Record<string, number> = {};
+
+    result.usedColumns.forEach((col) => {
+      const values: number[] = [];
+      data.data.forEach((row, rowIndex) => {
+        const key = `${rowIndex}-${col}`;
+        if (anomalyKeys.has(key)) return;
+        const raw = row[col];
+        if (raw === undefined || raw === null || raw === '') return;
+        const num = typeof raw === 'number' ? raw : parseFloat(String(raw));
+        if (Number.isFinite(num)) {
+          values.push(num);
+        }
+      });
+
+      if (!values.length) {
+        return;
+      }
+
+      let central = values[0];
+      if (action === 'replace_mean') {
+        const sum = values.reduce((s, v) => s + v, 0);
+        central = sum / values.length;
+      } else if (action === 'replace_median') {
+        const sorted = [...values].sort((a, b) => a - b);
+        const mid = Math.floor(sorted.length / 2);
+        central = sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+      } else if (action === 'replace_mode') {
+        const counts = new Map<number, number>();
+        let bestVal = values[0];
+        let bestCount = 0;
+        values.forEach((v) => {
+          const next = (counts.get(v) || 0) + 1;
+          counts.set(v, next);
+          if (next > bestCount) {
+            bestCount = next;
+            bestVal = v;
+          }
+        });
+        central = bestVal;
+      }
+
+      centralByColumn[col] = central;
+    });
+
+    if (Object.keys(centralByColumn).length === 0) {
+      return;
+    }
+
+    let nextState: SpreadsheetState = data;
+    result.anomalies.forEach((a) => {
+      const replacement = centralByColumn[a.column];
+      if (replacement === undefined) return;
+      nextState = applyCellChange(nextState, a.rowIndex, a.column, replacement);
+    });
+
+    if (nextState !== data) {
+      onChange(nextState);
+      const post = detectAnomalies(nextState, {
+        method: options.method,
+        columns: options.columns,
+      });
+      setAnomalies(post.anomalies);
+    }
   };
 
   const handleTypeChange = (col: string, newType: ColumnType) => {
@@ -1123,6 +1270,7 @@ ${tbody}
         currentMatchIndex={currentMatchIndex}
         prevMatch={prevMatch}
         nextMatch={nextMatch}
+        onRunAnomalyDetection={handleRunAnomalyDetection}
       />
       <FormulaBar
         selectedCellLabel={selectedCellLabel}
@@ -1160,9 +1308,7 @@ ${tbody}
       {anomalies.length > 0 && (
         <div className="px-3 py-1 text-[11px] text-red-700 bg-red-50 border-t border-red-100 flex items-center gap-1">
           <AlertCircle size={12} className="text-red-500" />
-          <span>
-            تم اكتشاف {anomalies.length} قيمة شاذة في الأعمدة الرقمية (باستخدام z-score ≥ 3).
-          </span>
+          <span>Detected {anomalies.length} anomalous values in numeric columns.</span>
         </div>
       )}
     </div>

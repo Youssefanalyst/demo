@@ -4,15 +4,27 @@ import { askCopilotWithOpenRouter, assistSpreadsheetWithOpenRouter, AISettings }
 import { evaluateFormula } from '../lib/formulas/engine';
 import { Send, Bot, User, X } from 'lucide-react';
 
+interface WorkbookContextForAI {
+  activeSheetName: string;
+  sheets: {
+    name: string;
+    columns: string[];
+    columnTypes: Record<string, any>;
+    rowCount: number;
+  }[];
+}
+
 interface CopilotProps {
   data: SpreadsheetState;
   onDataChange: (newData: SpreadsheetState) => void;
   isOpen: boolean;
   onClose: () => void;
   aiSettings: AISettings;
+  workbookContext?: WorkbookContextForAI;
+  onTriggerAnomalyDetection?: (options?: { method?: 'zscore' | 'iqr'; columns?: string[] }) => void;
 }
 
-const Copilot: React.FC<CopilotProps> = ({ data, onDataChange, isOpen, onClose, aiSettings }) => {
+const Copilot: React.FC<CopilotProps> = ({ data, onDataChange, isOpen, onClose, aiSettings, workbookContext, onTriggerAnomalyDetection }) => {
   const [messages, setMessages] = useState<Message[]>([
     { id: '1', role: 'model', content: "Hi! I'm Lumina. I can help you analyze this spreadsheet, write formulas, or explain trends. What's on your mind?", timestamp: Date.now() }
   ]);
@@ -78,17 +90,20 @@ const Copilot: React.FC<CopilotProps> = ({ data, onDataChange, isOpen, onClose, 
 
     if (Array.isArray(result.operations)) {
       result.operations.forEach((op) => {
-        if (op.type !== 'update_cell') return;
-        const rowIndex = op.target?.rowIndex;
-        const columnKey = op.target?.columnKey;
-        if (
-          typeof rowIndex === 'number' &&
-          rowIndex >= 0 &&
-          rowIndex < nextState.data.length &&
-          typeof columnKey === 'string' &&
-          nextState.columns.includes(columnKey)
-        ) {
-          nextState = applyCellChange(nextState, rowIndex, columnKey, op.value);
+        if (op.type === 'update_cell') {
+          const rowIndex = op.target?.rowIndex;
+          const columnKey = op.target?.columnKey;
+          if (
+            typeof rowIndex === 'number' &&
+            rowIndex >= 0 &&
+            rowIndex < nextState.data.length &&
+            typeof columnKey === 'string' &&
+            nextState.columns.includes(columnKey)
+          ) {
+            nextState = applyCellChange(nextState, rowIndex, columnKey, op.value);
+          }
+        } else if (op.type === 'run_anomaly_detection' && onTriggerAnomalyDetection) {
+          onTriggerAnomalyDetection(op.options);
         }
       });
     }
@@ -127,13 +142,13 @@ const Copilot: React.FC<CopilotProps> = ({ data, onDataChange, isOpen, onClose, 
       }
 
       const history = [...messages, userMsg].map(m => ({ role: m.role, content: m.content }));
-      const response = await askCopilotWithOpenRouter(history, data, aiSettings);
+      const response = await askCopilotWithOpenRouter(history, data, aiSettings, workbookContext);
 
       let reply = response || "I couldn't generate a response.";
 
       // Try to also interpret the message as a sheet-edit instruction
       try {
-        const sheetResult = await assistSpreadsheetWithOpenRouter(data, aiSettings, userMsg.content);
+        const sheetResult = await assistSpreadsheetWithOpenRouter(data, aiSettings, userMsg.content, workbookContext);
         if (sheetResult && Array.isArray(sheetResult.operations) && sheetResult.operations.length > 0) {
           const updatedState = applySheetAssistantResult(data, sheetResult);
           if (updatedState !== data) {
