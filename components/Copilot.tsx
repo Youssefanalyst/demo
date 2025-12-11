@@ -26,7 +26,7 @@ interface CopilotProps {
 
 const Copilot: React.FC<CopilotProps> = ({ data, onDataChange, isOpen, onClose, aiSettings, workbookContext, onTriggerAnomalyDetection }) => {
   const [messages, setMessages] = useState<Message[]>([
-    { id: '1', role: 'model', content: "Hi! I'm Lumina. I can help you analyze this spreadsheet, write formulas, or explain trends. What's on your mind?", timestamp: Date.now() }
+    { id: '1', role: 'model', content: "Hi! I'm Tahlel. I can help you analyze this spreadsheet, write formulas, or explain trends. What's on your mind?", timestamp: Date.now() }
   ]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -193,7 +193,7 @@ const Copilot: React.FC<CopilotProps> = ({ data, onDataChange, isOpen, onClose, 
           <div className="bg-brand-100 p-1.5 rounded-lg">
             <Bot size={20} className="text-brand-600" />
           </div>
-          <h2 className="font-semibold text-gray-800">Lumina Assistant</h2>
+          <h2 className="font-semibold text-gray-800">Tahlel Assistant</h2>
         </div>
         <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-1 rounded-md hover:bg-gray-100">
           <X size={20} />

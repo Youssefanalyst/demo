@@ -197,7 +197,7 @@ const App: React.FC = () => {
           <div className="bg-brand-600 p-2 rounded-lg shadow-sm">
             <LayoutGrid className="text-white" size={20} />
           </div>
-          <h1 className="text-xl font-bold text-gray-900 tracking-tight">Lumina<span className="text-brand-600">BI</span></h1>
+          <h1 className="text-xl font-bold text-gray-900 tracking-tight">Tahlel</h1>
         </div>
 
         <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-xl">

@@ -119,7 +119,7 @@ export const askCopilot = async (
   const chat = ai.chats.create({
     model: 'gemini-2.5-flash',
     config: {
-      systemInstruction: `You are Lumina, a helpful data assistant. 
+      systemInstruction: `You are Tahlel, a helpful data assistant. 
       You help users edit spreadsheets, understand formulas, and analyze data. 
       Keep answers concise and helpful. 
       ${context}`

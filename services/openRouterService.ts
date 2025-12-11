@@ -106,7 +106,7 @@ const callOpenRouter = async (
   if (typeof window !== 'undefined') {
     try {
       headers['HTTP-Referer'] = window.location.origin;
-      headers['X-Title'] = 'LuminaBI';
+      headers['X-Title'] = 'Tahlel';
     } catch {
       
     }
@@ -240,7 +240,7 @@ Data (first 10 rows): ${JSON.stringify(contextData.data.slice(0, 10))}`;
     context += `\n\nWorkbook Overview:\n${sheetsSummary}\n\nActive sheet: ${workbookContext.activeSheetName}`;
   }
 
-  const systemPrompt = `You are Lumina, a helpful data assistant.
+  const systemPrompt = `You are Tahlel, a helpful data assistant.
 You help users edit spreadsheets, understand formulas, and analyze data.
 Keep answers concise and helpful.
 Use this dataset context when answering:
@@ -273,7 +273,7 @@ export const assistSpreadsheetWithOpenRouter = async (
   const columns = spreadsheet.columns;
   const sampleRows = spreadsheet.data.slice(0, 20);
 
-  const systemPrompt = `You are Lumina, an AI assistant embedded inside a spreadsheet.
+  const systemPrompt = `You are Tahlel, an AI assistant embedded inside a spreadsheet.
 You receive the spreadsheet structure (column names, types, and sample rows) and a natural language command from the user.
 Your job is to translate that command into concrete, safe edit operations on the spreadsheet.
 
