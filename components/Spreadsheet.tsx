@@ -500,11 +500,28 @@ const Spreadsheet: React.FC<SpreadsheetProps> = ({
     });
   };
 
-  const addColumn = () => {
-    const newColName = `Col ${data.columns.length + 1}`;
-    const newColumns = [...data.columns, newColName];
-    const newColumnTypes = { ...data.columnTypes, [newColName]: 'text' as ColumnType };
-    const newData = data.data.map(row => ({ ...row, [newColName]: '' }));
+  const addColumns = (count: number) => {
+    const safeCount = Math.max(1, Math.min(100, Math.floor(count || 0)));
+    const startIndex = data.columns.length;
+    const newColumns = [...data.columns];
+    const newColumnTypes: Record<string, ColumnType> = { ...data.columnTypes };
+    const addedColumnNames: string[] = [];
+
+    for (let i = 0; i < safeCount; i++) {
+      const newColName = `Col ${startIndex + i + 1}`;
+      newColumns.push(newColName);
+      newColumnTypes[newColName] = 'text';
+      addedColumnNames.push(newColName);
+    }
+
+    const newData = data.data.map(row => {
+      const extended = { ...row } as RowData;
+      addedColumnNames.forEach((col) => {
+        extended[col] = '';
+      });
+      return extended;
+    });
+
     onChange({ ...data, columns: newColumns, columnTypes: newColumnTypes, data: newData });
   };
 

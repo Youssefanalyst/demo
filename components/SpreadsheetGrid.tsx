@@ -30,7 +30,7 @@ interface SpreadsheetGridProps {
   editingCell: CellCoord | null;
   setEditingCell: (cell: CellCoord | null) => void;
   addRows: (count: number) => void;
-  addColumn: () => void;
+  addColumns: (count: number) => void;
   handleCellChange: (rowIndex: number, column: string, value: string) => void;
   isAnomalyCell: (rowIndex: number, column: string) => boolean;
 }
@@ -55,11 +55,12 @@ const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
   editingCell,
   setEditingCell,
   addRows,
-  addColumn,
+  addColumns,
   handleCellChange,
   isAnomalyCell,
 }) => {
   const [rowsToAdd, setRowsToAdd] = useState<number>(1);
+  const [columnsToAdd, setColumnsToAdd] = useState<number>(1);
 
   const handleRowsToAddChange = (value: string) => {
     const parsed = parseInt(value, 10);
@@ -69,6 +70,16 @@ const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
     }
     const clamped = Math.max(1, Math.min(10000, parsed));
     setRowsToAdd(clamped);
+  };
+
+  const handleColumnsToAddChange = (value: string) => {
+    const parsed = parseInt(value, 10);
+    if (isNaN(parsed)) {
+      setColumnsToAdd(1);
+      return;
+    }
+    const clamped = Math.max(1, Math.min(100, parsed));
+    setColumnsToAdd(clamped);
   };
 
   return (
@@ -99,7 +110,7 @@ const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
               ))}
               <th className="w-12 border-b border-gray-200 bg-gray-50 p-1">
                 <button
-                  onClick={addColumn}
+                  onClick={() => addColumns(1)}
                   className="w-full h-full flex items-center justify-center text-gray-400 hover:text-brand-600 hover:bg-brand-50 rounded"
                   title="Add Column"
                 >
@@ -140,22 +151,41 @@ const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
         </table>
       </div>
       <div className="p-2 border-t border-gray-200 bg-gray-50 flex justify-between items-center">
-        <div className="flex items-center gap-2">
-          <input
-            type="number"
-            min={1}
-            max={10000}
-            value={rowsToAdd}
-            onChange={(e) => handleRowsToAddChange(e.target.value)}
-            className="w-20 px-2 py-1 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-brand-500"
-            title="Number of rows to add (1 - 10000)"
-          />
-          <button
-            onClick={() => addRows(rowsToAdd)}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-brand-700 bg-brand-50 hover:bg-brand-100 rounded-md transition-colors"
-          >
-            <Plus size={16} /> Add Rows
-          </button>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min={1}
+              max={10000}
+              value={rowsToAdd}
+              onChange={(e) => handleRowsToAddChange(e.target.value)}
+              className="w-20 px-2 py-1 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-brand-500"
+              title="Number of rows to add (1 - 10000)"
+            />
+            <button
+              onClick={() => addRows(rowsToAdd)}
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-brand-700 bg-brand-50 hover:bg-brand-100 rounded-md transition-colors"
+            >
+              <Plus size={16} /> Add Rows
+            </button>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min={1}
+              max={100}
+              value={columnsToAdd}
+              onChange={(e) => handleColumnsToAddChange(e.target.value)}
+              className="w-20 px-2 py-1 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-brand-500"
+              title="Number of columns to add (1 - 100)"
+            />
+            <button
+              onClick={() => addColumns(columnsToAdd)}
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-brand-700 bg-brand-50 hover:bg-brand-100 rounded-md transition-colors"
+            >
+              <Plus size={16} /> Add Columns
+            </button>
+          </div>
         </div>
         <div className="flex gap-4 text-xs text-gray-400 px-2">
           <span className="flex items-center gap-1 text-blue-600">
