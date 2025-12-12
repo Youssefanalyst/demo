@@ -170,13 +170,9 @@ const Copilot: React.FC<CopilotProps> = ({ data, onDataChange, isOpen, onClose, 
         setMessages(prev => [...prev, botMsg]);
         return;
       }
+      let reply: string | null = null;
 
-      const history = [...messages, userMsg].map(m => ({ role: m.role, content: m.content }));
-      const response = await askCopilotWithOpenRouter(history, data, aiSettings, workbookContext);
-
-      let reply = response || "I couldn't generate a response.";
-
-      // Try to also interpret the message as a sheet-edit instruction
+      // First, try to interpret the message as a sheet-edit instruction
       try {
         const sheetResult = await assistSpreadsheetWithOpenRouter(data, aiSettings, userMsg.content, workbookContext);
         if (sheetResult && Array.isArray(sheetResult.operations) && sheetResult.operations.length > 0) {
@@ -184,12 +180,22 @@ const Copilot: React.FC<CopilotProps> = ({ data, onDataChange, isOpen, onClose, 
           if (updatedState !== data) {
             onDataChange(updatedState);
           }
-          if (sheetResult.explanation) {
-            reply = `${reply}\n\n${sheetResult.explanation}`;
+
+          if (sheetResult.explanation && sheetResult.explanation.trim()) {
+            reply = sheetResult.explanation;
+          } else {
+            reply = 'I applied your request to the sheet.';
           }
         }
       } catch (sheetError) {
         console.error('Sheet assistant inside Copilot failed', sheetError);
+      }
+
+      // If no sheet edits were applied, fall back to a conversational answer
+      if (!reply) {
+        const history = [...messages, userMsg].map(m => ({ role: m.role, content: m.content }));
+        const response = await askCopilotWithOpenRouter(history, data, aiSettings, workbookContext);
+        reply = response || "I couldn't generate a response.";
       }
 
       const botMsg: Message = {
