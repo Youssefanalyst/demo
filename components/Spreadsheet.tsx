@@ -1322,5 +1322,6 @@ ${tbody}
       )}
     </div>
   );
+};
 
 export default Spreadsheet;
