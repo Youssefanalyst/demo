@@ -108,15 +108,7 @@ const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
                   />
                 </th>
               ))}
-              <th className="w-12 border-b border-gray-200 bg-gray-50 p-1">
-                <button
-                  onClick={() => addColumns(1)}
-                  className="w-full h-full flex items-center justify-center text-gray-400 hover:text-brand-600 hover:bg-brand-50 rounded"
-                  title="Add Column"
-                >
-                  <Plus size={16} />
-                </button>
-              </th>
+              <th className="w-12 border-b border-gray-200 bg-gray-50 p-1" />
             </tr>
           </thead>
           <tbody className="bg-white">
