@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Message, SpreadsheetState, SheetAssistantResult } from '../types';
+import { Message, SpreadsheetState, SheetAssistantResult, RowData } from '../types';
 import { askCopilotWithOpenRouter, assistSpreadsheetWithOpenRouter, AISettings } from '../services/openRouterService';
 import { evaluateFormula } from '../lib/formulas/engine';
 import { Send, Bot, User, X } from 'lucide-react';
@@ -13,6 +13,8 @@ interface WorkbookContextForAI {
     rowCount: number;
   }[];
 }
+
+const MAX_ROWS_TO_ADD = 20000;
 
 interface CopilotProps {
   data: SpreadsheetState;
@@ -82,6 +84,29 @@ const Copilot: React.FC<CopilotProps> = ({ data, onDataChange, isOpen, onClose, 
     };
   };
 
+  const addRowsToState = (state: SpreadsheetState, count: number): SpreadsheetState => {
+    const normalized = Math.floor(count || 0);
+    const safeCount = Math.max(1, Math.min(MAX_ROWS_TO_ADD, normalized));
+    if (!Number.isFinite(safeCount) || safeCount <= 0) {
+      return state;
+    }
+
+    const template: RowData = {};
+    state.columns.forEach((col) => {
+      template[col] = '';
+    });
+
+    const newRows: RowData[] = [];
+    for (let i = 0; i < safeCount; i++) {
+      newRows.push({ ...template });
+    }
+
+    return {
+      ...state,
+      data: [...state.data, ...newRows],
+    };
+  };
+
   const applySheetAssistantResult = (
     state: SpreadsheetState,
     result: SheetAssistantResult,
@@ -104,6 +129,11 @@ const Copilot: React.FC<CopilotProps> = ({ data, onDataChange, isOpen, onClose, 
           }
         } else if (op.type === 'run_anomaly_detection' && onTriggerAnomalyDetection) {
           onTriggerAnomalyDetection(op.options);
+        } else if (op.type === 'add_rows') {
+          const { count } = op as { count?: number };
+          if (typeof count === 'number' && count > 0) {
+            nextState = addRowsToState(nextState, count);
+          }
         }
       });
     }

@@ -68,6 +68,10 @@ export type SheetEditOperation =
         columns?: string[];
         action?: 'highlight' | 'replace_mean' | 'replace_median' | 'replace_mode' | 'delete_rows';
       };
+    }
+  | {
+      type: 'add_rows';
+      count: number;
     };
 
 export interface SheetAssistantResult {

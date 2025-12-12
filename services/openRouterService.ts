@@ -298,6 +298,10 @@ The JSON must match exactly this TypeScript shape:
           "action"?: "highlight" | "replace_mean" | "replace_median" | "replace_mode" | "delete_rows";
         };
       }
+    | {
+        "type": "add_rows";
+        "count": number;
+      }
   )[];
 }
 
@@ -312,6 +316,7 @@ Notes:
 - If the instruction is ambiguous, do the safest, smallest change that clearly matches it.
 - If the user asks you to highlight or select anomalous values without changing them, return a single 'run_anomaly_detection' operation with options.action = 'highlight' (or omit action, which defaults to highlight) instead of 'update_cell'.
 - If the user asks you to automatically fix or treat anomalous values (for example, replace them with the column mean/median/mode, or delete rows containing anomalies), prefer returning a single 'run_anomaly_detection' operation with options.action set to 'replace_mean', 'replace_median', 'replace_mode', or 'delete_rows' instead of issuing many 'update_cell' operations.
+ - If the user asks you to add N new empty rows (for example, "add 20000 empty rows"), prefer returning a single 'add_rows' operation with count = N instead of many separate edits.
 - If you cannot determine any safe edit, return operations: [] and a brief explanation why.`;
 
   const anomalySummary = buildAnomalySummary(spreadsheet);
